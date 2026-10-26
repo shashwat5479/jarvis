@@ -34,7 +34,10 @@ module.exports = async (req, res) => {
       }),
     });
     const data = await r.json();
-    if (!r.ok) return res.status(502).json({ error: 'The AI service returned an error.' });
+    if (!r.ok) {
+  console.error('Gemini error', r.status, JSON.stringify(data));
+  return res.status(502).json({ error: 'The AI service returned an error (' + r.status + ').' });
+}
     const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
     return res.status(200).json({ text: text || "I don't have an answer for that." });
   } catch (e) {
