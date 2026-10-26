@@ -23,21 +23,26 @@ module.exports = async (req, res) => {
   if (!query) return res.status(400).json({ error: 'Empty query' });
 
   try {
-    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM }] },
-        contents: [{ role: 'user', parts: [{ text: query }] }],
-        generationConfig: { maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } },
-      }),
-    });
-    const data = await r.json();
-    if (!r.ok) {
-  console.error('Gemini error', r.status, JSON.stringify(data));
-  return res.status(502).json({ error: 'The AI service returned an error (' + r.status + ').' });
-}
+    // Google retires models without much warning (404 NOT_FOUND), so try a list of models in order.
+    const models = [process.env.GEMINI_MODEL, 'gemini-3.5-flash', 'gemini-3-flash', 'gemini-flash-latest', 'gemini-2.5-flash']
+      .filter(Boolean).filter((m, i, a) => a.indexOf(m) === i);
+    let data, r;
+    for (const model of models) {
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM }] },
+          contents: [{ role: 'user', parts: [{ text: query }] }],
+          generationConfig: { maxOutputTokens: 1024 },
+        }),
+      });
+      data = await r.json().catch(() => ({}));
+      if (r.ok) break;
+      console.error('Gemini error', model, r.status, JSON.stringify(data));
+      if (r.status !== 404) break; // only move on to the next model when this one is gone
+    }
+    if (!r.ok) return res.status(502).json({ error: 'The AI service returned an error (' + r.status + ').' });
     const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
     return res.status(200).json({ text: text || "I don't have an answer for that." });
   } catch (e) {
