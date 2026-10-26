@@ -7,11 +7,16 @@ $(document).ready(function () {
     // Display Speak Message
     eel.expose(DisplayMessage)
     function DisplayMessage(message) {
-        // Replace the hidden textillate <li>
-        $(".siri-message .texts li").text(message);
-
-        // Re-initialize textillate so it splits into chars again
-        $('.siri-message').textillate('start');
+        var li = $(".siri-message .texts li");
+        if (li.length) {
+            // Replace the hidden textillate <li>
+            li.text(message);
+            // Re-initialize textillate so it splits into chars again
+            $('.siri-message').textillate('start');
+        } else {
+            // animation plugin not active: plain text fallback
+            $(".siri-message").text(message);
+        }
     }
 
     // Display hood

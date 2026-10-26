@@ -53,6 +53,51 @@
     });
   }
 
+  // ---- wake word: say "Jarvis" (Chrome/Edge, tab open, mic allowed) ----
+  const SRC = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let wakeOn = false, busy = false, wakeRec = null, wakeTimer = null, wakeDelay = 400;
+  function stopWake() {
+    clearTimeout(wakeTimer);
+    const r = wakeRec; wakeRec = null;
+    if (r) { r.onend = r.onerror = r.onresult = null; try { r.abort(); } catch (e) { /* ignore */ } }
+  }
+  function fireWake(rest) {
+    if (busy) return;
+    stopWake();
+    const oval = document.getElementById('Oval'), siri = document.getElementById('SiriWave');
+    if (oval) oval.hidden = true;
+    if (siri) siri.hidden = false;
+    backend.playAssistantSound();
+    backend.allCommands(rest || undefined);
+  }
+  function startWake() {
+    if (!SRC) return;
+    wakeOn = true;
+    if (wakeRec || busy) return;
+    const r = new SRC();
+    wakeRec = r;
+    r.lang = 'en-IN'; r.continuous = true; r.interimResults = true;
+    r.onresult = (e) => {
+      let text = '', final = false;
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        text += ' ' + e.results[i][0].transcript;
+        if (e.results[i].isFinal) final = true;
+      }
+      text = text.toLowerCase();
+      if (!/\bjarvis\b/.test(text)) return;
+      const rest = text.split(/\bjarvis\b/).pop().trim();
+      clearTimeout(wakeTimer);
+      if (final) fireWake(rest);
+      else wakeTimer = setTimeout(() => fireWake(rest), 1500); // heard it, no final yet
+    };
+    r.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') wakeOn = false;
+      wakeDelay = e.error === 'network' ? 3000 : 400;
+    };
+    r.onend = () => { wakeRec = null; if (wakeOn && !busy) setTimeout(startWake, wakeDelay); };
+    try { r.start(); } catch (e) { wakeRec = null; }
+  }
+
   // ---- helpers ----
   function addLink(url, label) {
     const box = document.getElementById('chat-canvas-body');
@@ -145,15 +190,19 @@
       ui('hideFaceAuthSuccess');
       await speak('Hello, Welcome Sir, How can I help you');
       ui('hideStart');
+      startWake();
     },
     playAssistantSound() { try { new Audio('assets/audio/start_sound.mp3').play().catch(() => {}); } catch (e) { /* ignore */ } },
     async allCommands(message) {
+      busy = true; stopWake(); await sleep(300);
       const typed = message !== undefined && message !== 1;
       const q = typed ? String(message) : await listen();
       if (q) ui('senderText', q);
       try { await (q ? route(q.toLowerCase()) : speak("Sorry, I didn't catch that")); }
       catch (e) { console.error(e); await speak('Something went wrong'); }
       ui('ShowHood');
+      busy = false;
+      if (wakeOn) startWake();
     },
     assistantName: () => 'jarvis',
     personalInfo() { const i = load('jv_info', null); if (i) ui('getData', JSON.stringify(i)); return 1; },

@@ -1,5 +1,11 @@
 $(document).ready(function () {
 
+    // If the text-animation plugin fails to load, keep the app working without it
+    if (!$.fn.textillate) {
+        console.warn('textillate failed to load; running without text animation');
+        $.fn.textillate = function () { return this; };
+    }
+
     eel.init()()
 
     $('.text').textillate({
